@@ -1,1 +1,1 @@
-# mannequin-studio
+# fit-studio
