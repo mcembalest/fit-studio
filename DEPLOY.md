@@ -58,8 +58,8 @@ consent screen and a Web application client whose authorised redirect URI is
 
 ### Scripts and curl need a service token
 
-Access answers an unauthenticated request with a login page, so `npm run seed`
-and any `curl` against production will silently get HTML instead of JSON.
+Access answers an unauthenticated request with a login page, so any `curl`
+against production silently gets HTML instead of JSON.
 
 Create one under **Zero Trust** → **Access** → **Service Auth** → **Service
 Tokens**, then add a second policy to the `fitstudio` application with action
@@ -70,8 +70,8 @@ export CF_ACCESS_CLIENT_ID=...
 export CF_ACCESS_CLIENT_SECRET=...
 ```
 
-`scripts/seed-photos.mjs` picks those up automatically and refuses to run
-against a remote URL without them. For `curl`, add:
+`npm run sync` does *not* need these — it reads production through wrangler
+rather than over HTTPS. For `curl`, add:
 
 ```sh
 -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
@@ -136,18 +136,19 @@ generation**, so curating the set means adding and deleting.
 
 Keep clear solo shots. Group photos and distant shots make the subject
 ambiguous, and a photo of someone else teaches the model the wrong face — this
-happened and was a real cause of bad likeness. `scripts/seed-photos.mjs` holds
-the curated list in `KEEP`.
+happened and was a real cause of bad likeness.
+
+**Photos are added and removed in Settings, in the browser.** That is the only
+route now; there is no seeding script. It is also the correct one: uploads go
+through `src/lib/image.ts`, which bakes EXIF rotation into the pixels. Copying a
+file into R2 by hand skips that, and the OpenAI API ignores the orientation flag
+— sideways references wreck the likeness.
+
+`npm run sync` pulls that set down into local dev; nothing pushes the other way.
 
 The written description of her is edited in Settings and stored in D1, so
 changing it needs no redeploy. It is added to every prompt — it is the right
 place for anything you keep correcting by hand.
-
-To load photos into production (needs the service token from above):
-
-```sh
-FIT_STUDIO_URL=https://fitstudio.macembalest.workers.dev npm run seed
-```
 
 ## Verify after deploying
 

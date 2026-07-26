@@ -26,8 +26,8 @@ Local dev and production read the same are.na channel — `ARENA_CHANNEL` in
 `npm run sync` makes the reference set match too, so a local generation is a
 fair preview of a real one. Rerun it whenever the set changes in Settings.
 
-`npm run seed` is a different thing: it loads `sanjana_images/` from scratch and
-exists to bootstrap an empty deployment, not for everyday local work.
+Reference photos are added and removed in Settings, in the browser — that is
+the only route, and the right one: uploads are EXIF-normalised on the way in.
 
 ## Deploying
 

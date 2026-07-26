@@ -12,7 +12,6 @@
     "deploy": "vite build && wrangler deploy",
     "db:local": "wrangler d1 execute fit-studio --local --file=schema.sql",
     "db:remote": "wrangler d1 execute fit-studio --remote --file=schema.sql",
-    "seed": "node scripts/seed-photos.mjs",
     "sync": "node scripts/sync-photos.mjs",
     "shot": "node scripts/screenshot.mjs",
     "typecheck": "tsc --noEmit"

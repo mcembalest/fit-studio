@@ -12,7 +12,7 @@ src/            React app (:8080 in dev)
 worker/index.ts routes + the GenerationJob Durable Object; worker/openai.ts generation
 schema.sql      full schema for fresh setups
 migrations/     numbered forward migrations for existing databases
-scripts/        seed-photos.mjs, screenshot.mjs
+scripts/        sync-photos.mjs, screenshot.mjs
 ```
 
 ## How it works
@@ -60,8 +60,9 @@ start can't double-charge.
 **Reference photos must have EXIF rotation baked into the pixels.** iPhone
 photos are stored landscape with an orientation flag; the OpenAI API ignores the
 flag, sees them sideways, and likeness degrades badly. Browser uploads are
-normalized in `src/lib/image.ts`; the seed script uses `magick -auto-orient
--strip`. This was the single largest quality bug found.
+normalized in `src/lib/image.ts`, which is now the only way photos enter the
+set — so never put an image into R2 by hand. This was the single largest
+quality bug found.
 
 **Curate the reference set; don't fill it.** Every photo in Settings is sent on
 every generation — there is no on/off state. A handful of clear solo shots beats
@@ -100,22 +101,22 @@ new looks *before* clearing the pending placeholders (otherwise the strip blinks
 with the generation apparently gone), and don't commit `seen` until that fetch
 succeeds (otherwise a dropped poll strands the look forever).
 
-**Local dev should mirror production, not `sanjana_images/`.** `npm run sync`
-copies production's reference photos and her description into local D1 and R2,
-so a local generation previews a real one. Without it local drifts to whatever
-was seeded once, and the reference set is the single biggest driver of likeness.
+**Local dev mirrors production via `npm run sync`.** It copies production's
+reference photos and her description into local D1 and R2, so a local
+generation previews a real one. Without it local drifts, and the reference set
+is the single biggest driver of likeness.
 The are.na channel already matches — `ARENA_CHANNEL` is a `var`, read by
 `wrangler dev` and `wrangler deploy` alike. The sync goes through the Cloudflare
 API rather than HTTPS, so it needs no Access service token.
 
 **Auth lives outside the app, and it breaks scripts.** Cloudflare Access guards
 the hostname; there is no login code in the Worker and there should not be.
-Anything hitting production from a terminal — `npm run seed`, any `curl` —
-needs `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`, or Access hands back
-its login page and the failure looks like a JSON parse error. `wrangler` is
-unaffected. If an API call in the browser fails with a bare network error, that
-is usually an expired Access session, not a bug: `src/lib/api.ts` turns it into
-a message telling her to reload.
+Any `curl` against production needs `CF_ACCESS_CLIENT_ID` /
+`CF_ACCESS_CLIENT_SECRET`, or Access hands back its login page and the failure
+looks like a JSON parse error. `wrangler` is unaffected, which is why
+`npm run sync` needs no token. If an API call in the browser fails with a bare
+network error, that is usually an expired Access session, not a bug:
+`src/lib/api.ts` turns it into a message telling her to reload.
 
 **Check mobile at 360px, not just 390px.** Overflow and cramping show up there
 first. `npm run shot` catches console errors; layout problems need a real look
@@ -127,7 +128,7 @@ plain explanation, and no amount of prompt rewording gets around it.
 
 **Changing `database_id` orphans local D1 state.** Wrangler keys local storage
 by database id, so a new id silently gives you a fresh empty local database.
-Rerun `npm run db:local` and `npm run seed`.
+Rerun `npm run db:local` and `npm run sync`.
 
 ## Working style for this repo
 
