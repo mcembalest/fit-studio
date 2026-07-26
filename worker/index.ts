@@ -150,10 +150,14 @@ async function writeSettings(env: Env, request: Request) {
   return json({ ok: true });
 }
 
-/** The frozen reference set: every active photo, loaded and ready to send. */
-async function activePhotos(env: Env): Promise<ImageInput[]> {
+/**
+ * The frozen reference set — every photo in Settings, loaded and ready to send.
+ * There is no on/off state: what is in Settings is what the model sees, so
+ * removing a photo from the set means deleting it.
+ */
+async function referencePhotos(env: Env): Promise<ImageInput[]> {
   const { results } = await env.DB.prepare(
-    `SELECT r2_key FROM model_photos WHERE active = 1 ORDER BY created_at`,
+    `SELECT r2_key FROM model_photos ORDER BY created_at`,
   ).all<{ r2_key: string }>();
   return Promise.all(results.map((p, i) => load(env, p.r2_key, `ref-${i + 1}.jpg`)));
 }
@@ -162,14 +166,13 @@ async function activePhotos(env: Env): Promise<ImageInput[]> {
 
 async function listPhotos(env: Env) {
   const { results } = await env.DB.prepare(
-    `SELECT id, r2_key, filename, active, created_at FROM model_photos ORDER BY created_at`,
-  ).all<{ id: string; r2_key: string; filename: string; active: number; created_at: string }>();
+    `SELECT id, r2_key, filename, created_at FROM model_photos ORDER BY created_at`,
+  ).all<{ id: string; r2_key: string; filename: string; created_at: string }>();
 
   return json({
     photos: results.map((p) => ({
       id: p.id,
       filename: p.filename,
-      active: p.active === 1,
       src: `/img/${p.r2_key}`,
       created_at: p.created_at,
     })),
@@ -187,22 +190,12 @@ async function uploadPhoto(env: Env, request: Request) {
     httpMetadata: { contentType: file.type || "image/jpeg" },
   });
   await env.DB.prepare(
-    `INSERT INTO model_photos (id, r2_key, filename, active, created_at) VALUES (?, ?, ?, 1, ?)`,
+    `INSERT INTO model_photos (id, r2_key, filename, created_at) VALUES (?, ?, ?, ?)`,
   )
     .bind(photoId, key, file.name || `${photoId}.jpg`, now())
     .run();
 
-  return json({
-    photo: { id: photoId, filename: file.name, active: true, src: `/img/${key}` },
-  });
-}
-
-async function setPhotoActive(env: Env, photoId: string, request: Request) {
-  const { active } = (await request.json()) as { active?: boolean };
-  await env.DB.prepare(`UPDATE model_photos SET active = ? WHERE id = ?`)
-    .bind(active ? 1 : 0, photoId)
-    .run();
-  return json({ ok: true });
+  return json({ photo: { id: photoId, filename: file.name, src: `/img/${key}` } });
 }
 
 async function deletePhoto(env: Env, photoId: string) {
@@ -224,9 +217,9 @@ async function handleTryOn(env: Env, request: Request) {
   };
   if (!garmentUrl) return fail("garmentUrl is required");
 
-  const photos = await activePhotos(env);
+  const photos = await referencePhotos(env);
   if (photos.length === 0) {
-    return fail("No reference photos are active — turn some on in Settings.", 409);
+    return fail("No reference photos yet — add some in Settings.", 409);
   }
 
   const description = await getSetting(env, "model_description", DEFAULT_DESCRIPTION);
@@ -272,7 +265,7 @@ async function handleRemix(env: Env, request: Request) {
   // Edits aimed at her appearance get the reference photos sent along, so the
   // model can correct drift instead of compounding it. Garment edits skip that
   // and stay cheap.
-  const grounded = isPersonEdit(prompt) ? await activePhotos(env) : [];
+  const grounded = isPersonEdit(prompt) ? await referencePhotos(env) : [];
 
   const png = await remix(
     env.OPENAI_API_KEY,
@@ -354,10 +347,8 @@ export default {
         return await handleRemix(env, request);
 
       const photoMatch = path.match(/^\/api\/photos\/([\w-]+)$/);
-      if (photoMatch) {
-        if (method === "PATCH")
-          return await setPhotoActive(env, photoMatch[1], request);
-        if (method === "DELETE") return await deletePhoto(env, photoMatch[1]);
+      if (photoMatch && method === "DELETE") {
+        return await deletePhoto(env, photoMatch[1]);
       }
 
       return fail("not found", 404);

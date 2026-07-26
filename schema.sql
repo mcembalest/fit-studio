@@ -1,10 +1,10 @@
--- Reference photos of the model. `active` is what she toggles in the UI:
--- only active photos are sent to the model on a try-on.
+-- Reference photos of the model. Every row here is sent to the model on every
+-- generation; there is no on/off state, so curating the set means adding and
+-- removing photos.
 CREATE TABLE IF NOT EXISTS model_photos (
   id         TEXT PRIMARY KEY,
   r2_key     TEXT NOT NULL,
   filename   TEXT NOT NULL,
-  active     INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
 

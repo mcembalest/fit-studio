@@ -18,11 +18,12 @@ import { join, extname, basename } from "node:path";
 const SOURCE = "sanjana_images";
 const BASE = process.env.FIT_STUDIO_URL ?? "http://localhost:8080";
 
-// Only these start out active. The rest are group shots, back-to-camera, or she
-// is too small in frame — feeding them in adds ambiguity about who the subject
-// is rather than adding signal. They still get uploaded so she can audition
-// them in the UI; they just begin switched off.
-const ACTIVE = new Set([
+// Only these are loaded. Everything sent becomes part of the reference set, and
+// the rest of sanjana_images/ is group shots, back-to-camera, or her too small
+// in frame — those make the subject ambiguous rather than better described. One
+// of them is a different person entirely. Add more from Settings if you want.
+const KEEP = new Set([
+  "IMG_1238",
   "IMG_2586",
   "IMG_3261",
   "IMG_3266",
@@ -41,6 +42,7 @@ try {
 
 const work = mkdtempSync(join(tmpdir(), "fit-studio-seed-"));
 let failed = 0;
+let loaded = 0;
 const files = readdirSync(SOURCE).filter((f) => /\.(jpe?g|png|heic)$/i.test(f));
 
 if (files.length === 0) {
@@ -50,6 +52,7 @@ if (files.length === 0) {
 
 for (const file of files) {
   const stem = basename(file, extname(file));
+  if (!KEEP.has(stem)) continue;
   const out = join(work, `${stem}.jpg`);
   execFileSync("magick", [
     join(SOURCE, file),
@@ -87,19 +90,12 @@ for (const file of files) {
     continue;
   }
 
-  const { photo } = await res.json();
-  const active = ACTIVE.has(stem);
-  if (!active) {
-    await fetch(`${BASE}/api/photos/${photo.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ active: false }),
-    });
-  }
-  console.log(`  ${stem}${active ? "  (active)" : ""}`);
+  await res.json();
+  loaded++;
+  console.log(`  ${stem}`);
 }
 
 console.log(
-  `\n${files.length - failed} of ${files.length} photos loaded, ${ACTIVE.size} active.` +
+  `\n${loaded} of ${KEEP.size} reference photos loaded.` +
     (failed ? ` ${failed} failed — rerun to retry.` : ""),
 );

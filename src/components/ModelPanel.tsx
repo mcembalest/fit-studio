@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { cn } from "@/lib/utils";
 import { normalizePhoto } from "@/lib/image";
 import type { Photo } from "@/lib/api";
 import * as api from "@/lib/api";
@@ -10,14 +9,18 @@ interface Props {
 }
 
 /**
- * The reference set. Only active photos are sent on a try-on, and which photos
- * are active is the strongest lever on likeness — a handful of clear solo shots
- * beats a dozen group photos, so this is worth curating rather than filling.
+ * The reference set. Every photo here is sent on a generation — there is no
+ * on/off state, so removing a photo from the set means deleting it.
+ *
+ * What is in this set is the strongest lever on likeness. A handful of clear
+ * solo shots beats a dozen mixed ones: group photos and distant shots make the
+ * subject ambiguous rather than better described, and a photo of a different
+ * person actively teaches the model the wrong face.
  */
 export function ModelPanel({ photos, onChange }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const activeCount = photos.filter((p) => p.active).length;
+  const [pending, setPending] = useState<string | null>(null);
 
   async function handleFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -33,13 +36,9 @@ export function ModelPanel({ photos, onChange }: Props) {
     }
   }
 
-  async function toggle(photo: Photo) {
-    await api.setPhotoActive(photo.id, !photo.active);
-    onChange();
-  }
-
   async function remove(photo: Photo) {
     await api.deletePhoto(photo.id);
+    setPending(null);
     onChange();
   }
 
@@ -49,39 +48,46 @@ export function ModelPanel({ photos, onChange }: Props) {
           why align-content is set to `start` rather than content-start. */}
       <div className="grid min-h-0 flex-1 grid-cols-3 [align-content:start] gap-2 overflow-y-auto p-3 sm:grid-cols-4">
         {photos.map((photo) => (
-          <figure key={photo.id} className="group relative">
-            <button
-              type="button"
-              onClick={() => toggle(photo)}
-              aria-pressed={photo.active}
-              className={cn(
-                // pt-[133.333%] is a 3:4 tile — see ClosetPanel for why this
-                // isn't aspect-[3/4].
-                "relative block w-full overflow-hidden rounded border pt-[133.333%] transition",
-                photo.active
-                  ? "border-accent ring-1 ring-accent"
-                  : "border-line opacity-40 hover:opacity-70",
-              )}
-            >
+          <figure key={photo.id} className="relative">
+            <span className="relative block w-full overflow-hidden rounded border border-line pt-[133.333%]">
               <img
                 src={photo.src}
                 alt={photo.filename}
                 className="absolute inset-0 h-full w-full object-cover"
               />
-            </button>
-            <button
-              type="button"
-              onClick={() => remove(photo)}
-              aria-label={`Delete ${photo.filename}`}
-              className="absolute right-1 top-1 hidden rounded bg-ink/70 px-1.5 text-xs text-white group-hover:block"
-            >
-              ×
-            </button>
+            </span>
+            {pending === photo.id ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded bg-ink/80 p-1 text-white">
+                <button
+                  type="button"
+                  onClick={() => remove(photo)}
+                  className="min-h-[32px] w-full rounded bg-white px-2 text-[11px] text-ink"
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPending(null)}
+                  className="min-h-[28px] text-[11px] underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPending(photo.id)}
+                aria-label={`Remove ${photo.filename}`}
+                className="absolute right-1 top-1 min-h-[28px] min-w-[28px] rounded bg-ink/70 text-xs text-white"
+              >
+                ×
+              </button>
+            )}
           </figure>
         ))}
       </div>
 
-      <footer className="border-t border-line p-3">
+      <footer className="shrink-0 border-t border-line p-3">
         <input
           ref={input}
           type="file"
@@ -94,7 +100,7 @@ export function ModelPanel({ photos, onChange }: Props) {
           type="button"
           disabled={busy}
           onClick={() => input.current?.click()}
-          className="w-full rounded border border-line py-2 text-xs hover:bg-canvas disabled:opacity-50"
+          className="min-h-[40px] w-full rounded border border-line text-xs hover:bg-canvas disabled:opacity-50"
         >
           {busy ? "Adding…" : "Add photos"}
         </button>

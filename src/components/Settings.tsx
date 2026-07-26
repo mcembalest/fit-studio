@@ -36,8 +36,6 @@ export function Settings({ photos, onPhotosChange, onClose }: Props) {
     }
   }
 
-  const activeCount = photos.filter((p) => p.active).length;
-
   return (
     <div className="fixed inset-0 z-20 flex flex-col bg-canvas">
       <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-3">
@@ -83,8 +81,10 @@ export function Settings({ photos, onPhotosChange, onClose }: Props) {
         <section className="p-4">
           <h2 className="text-sm font-medium">Reference photos</h2>
           <p className="mt-1 text-xs text-muted">
-            {activeCount} of {photos.length} active. Only active photos are sent to
-            the model. Fewer clear solo shots beat many mixed ones.
+            All {photos.length} are sent to the model on every generation. Keep
+            clear solo shots — group photos and distant shots make it ambiguous
+            who the subject is, and a photo of someone else teaches it the wrong
+            face.
           </p>
           <div className="mt-3 h-[60vh] overflow-hidden rounded border border-line">
             <ModelPanel photos={photos} onChange={onPhotosChange} />

@@ -9,7 +9,6 @@ export interface Garment {
 export interface Photo {
   id: string;
   filename: string;
-  active: boolean;
   src: string;
 }
 
@@ -55,13 +54,6 @@ export function uploadPhoto(file: File) {
     (r) => r.photo,
   );
 }
-
-export const setPhotoActive = (id: string, active: boolean) =>
-  call<{ ok: true }>(`/api/photos/${id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ active }),
-  });
 
 export const deletePhoto = (id: string) =>
   call<{ ok: true }>(`/api/photos/${id}`, { method: "DELETE" });
