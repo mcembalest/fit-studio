@@ -25,16 +25,3 @@ Then open http://localhost:8080. Needs a `.dev.vars` with an `OPENAI_API_KEY`
 
 `npm run deploy`. The full recipe — verification commands, migration ordering,
 rollback — is in [DEPLOY.md](DEPLOY.md).
-
-## Who can use it
-
-There is no login code in the app. Cloudflare Access guards the hostname, so
-anyone not on the allow list is turned away before the Worker runs and the
-OpenAI key can't be spent by a stranger who finds the URL. Setup, and the
-service token that scripts need to get past it, are in
-[DEPLOY.md](DEPLOY.md#access--who-can-use-the-app).
-
----
-
-[CLAUDE.md](CLAUDE.md) has the architecture and the list of things that are easy
-to get wrong in this codebase.
