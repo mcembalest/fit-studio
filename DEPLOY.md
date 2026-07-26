@@ -62,12 +62,27 @@ Access answers an unauthenticated request with a login page, so any `curl`
 against production silently gets HTML instead of JSON.
 
 Create one under **Zero Trust** → **Access** → **Service Auth** → **Service
-Tokens**, then add a second policy to the `fitstudio` application with action
-**Service Auth** and the token as the include rule. The secret is shown once.
+Tokens**. The secret is shown once.
+
+Then — and this is the step that catches people — give the application a
+**second, separate policy** whose *action* is **Service Auth**, with the token
+as its include rule:
+
+| Policy | Action | Include | For |
+|---|---|---|---|
+| existing | Allow | Emails | the browser |
+| **new** | **Service Auth** | Service Token | the terminal |
+
+Adding the token as another `Include` on the Allow policy looks equivalent and
+is not: the Service Token rule type only works under the Service Auth action,
+and Access will keep redirecting valid credentials to the login page.
+
+Store the pair in `.env` (gitignored) as environment variables — not in
+`.dev.vars`, which is the Worker's runtime env and has nothing to do with this:
 
 ```sh
-export CF_ACCESS_CLIENT_ID=...
-export CF_ACCESS_CLIENT_SECRET=...
+CF_ACCESS_CLIENT_ID=<32 hex chars>.access
+CF_ACCESS_CLIENT_SECRET=<64 hex chars>
 ```
 
 `npm run sync` does *not* need these — it reads production through wrangler
