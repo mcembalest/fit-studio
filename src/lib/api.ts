@@ -22,8 +22,24 @@ export interface Look {
   created_at: string;
 }
 
+const UNREACHABLE =
+  "Can't reach fit studio. Check your connection, or reload the page to sign in again.";
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  let res: Response;
+  try {
+    res = await fetch(path, init);
+  } catch {
+    // Offline — or a Cloudflare Access session that has expired, which bounces
+    // to a login host a same-origin fetch isn't allowed to read. Both look like
+    // a bare network error from here, and reloading fixes both.
+    throw new Error(UNREACHABLE);
+  }
+
+  // Access can also answer with the login page itself, which would otherwise
+  // blow up as a JSON parse error somewhere unhelpful.
+  if (!res.headers.get("content-type")?.includes("json")) throw new Error(UNREACHABLE);
+
   const body = (await res.json()) as T & { error?: string };
   if (!res.ok) throw new Error(body.error ?? `request failed (${res.status})`);
   return body;

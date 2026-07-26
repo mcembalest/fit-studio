@@ -9,6 +9,13 @@
 //
 //   npm run dev        # in another terminal
 //   npm run seed
+//
+// Production sits behind Cloudflare Access, which answers an unauthenticated
+// request with a login page rather than the API. Seeding it therefore needs a
+// service token (see DEPLOY.md):
+//
+//   CF_ACCESS_CLIENT_ID=... CF_ACCESS_CLIENT_SECRET=... \
+//     FIT_STUDIO_URL=https://fitstudio.macembalest.workers.dev npm run seed
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
@@ -17,6 +24,26 @@ import { join, extname, basename } from "node:path";
 
 const SOURCE = "sanjana_images";
 const BASE = process.env.FIT_STUDIO_URL ?? "http://localhost:8080";
+
+// Access reads these headers and lets the request through without a browser
+// login. Absent locally, where there is nothing in front of the worker.
+const { CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET } = process.env;
+const AUTH =
+  CF_ACCESS_CLIENT_ID && CF_ACCESS_CLIENT_SECRET
+    ? {
+        "CF-Access-Client-Id": CF_ACCESS_CLIENT_ID,
+        "CF-Access-Client-Secret": CF_ACCESS_CLIENT_SECRET,
+      }
+    : {};
+
+if (!BASE.includes("localhost") && !Object.keys(AUTH).length) {
+  console.error(
+    "Seeding a remote deployment needs CF_ACCESS_CLIENT_ID and " +
+      "CF_ACCESS_CLIENT_SECRET — without them Access returns its login page " +
+      "and every upload fails. See DEPLOY.md.",
+  );
+  process.exit(1);
+}
 
 // Only these are loaded. Everything sent becomes part of the reference set, and
 // the rest of sanjana_images/ is group shots, back-to-camera, or her too small
@@ -69,7 +96,7 @@ for (const file of files) {
   const upload = async () => {
     const form = new FormData();
     form.set("file", new File([bytes], `${stem}.jpg`, { type: "image/jpeg" }));
-    return fetch(`${BASE}/api/photos`, { method: "POST", body: form });
+    return fetch(`${BASE}/api/photos`, { method: "POST", body: form, headers: AUTH });
   };
 
   // Seeding a remote deployment fires 20+ multipart POSTs back to back, which

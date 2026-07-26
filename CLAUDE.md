@@ -100,6 +100,15 @@ new looks *before* clearing the pending placeholders (otherwise the strip blinks
 with the generation apparently gone), and don't commit `seen` until that fetch
 succeeds (otherwise a dropped poll strands the look forever).
 
+**Auth lives outside the app, and it breaks scripts.** Cloudflare Access guards
+the hostname; there is no login code in the Worker and there should not be.
+Anything hitting production from a terminal — `npm run seed`, any `curl` —
+needs `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`, or Access hands back
+its login page and the failure looks like a JSON parse error. `wrangler` is
+unaffected. If an API call in the browser fails with a bare network error, that
+is usually an expired Access session, not a bug: `src/lib/api.ts` turns it into
+a message telling her to reload.
+
 **Check mobile at 360px, not just 390px.** Overflow and cramping show up there
 first. `npm run shot` catches console errors; layout problems need a real look
 (it needs `npx playwright install chromium` once).
