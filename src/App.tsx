@@ -189,10 +189,12 @@ export default function App() {
     <div className="flex h-[100dvh] flex-col">
       <header className="flex items-center justify-between border-b border-line bg-surface px-4 py-2">
         <h1 className="text-sm font-medium tracking-tight">fit studio</h1>
+        {/* min-h: py-1.5 alone left this 30px tall, under the size a thumb
+            hits reliably. Everything else on a phone screen already clears 32. */}
         <button
           type="button"
           onClick={() => setSettingsOpen(true)}
-          className="rounded border border-line px-3 py-1.5 text-xs hover:bg-canvas"
+          className="inline-flex min-h-[36px] items-center rounded border border-line px-3 text-xs hover:bg-canvas"
         >
           Settings
         </button>
