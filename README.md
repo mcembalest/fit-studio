@@ -13,13 +13,21 @@ images and D1 for metadata.
 ```sh
 npm install
 npm run db:local          # create the D1 tables locally
+npm run sync              # mirror production's reference photos into local
 npm run dev               # vite + wrangler together
-npm run seed              # load sanjana_images/ as reference photos
 ```
 
 Then open http://localhost:8080. Needs a `.dev.vars` with an `OPENAI_API_KEY`
 (see `.dev.vars.example`). Wrangler simulates R2 and D1 on disk under
 `.wrangler/`, so nothing touches Cloudflare until you deploy.
+
+Local dev and production read the same are.na channel — `ARENA_CHANNEL` in
+`wrangler.jsonc` is used by `wrangler dev` and `wrangler deploy` alike — and
+`npm run sync` makes the reference set match too, so a local generation is a
+fair preview of a real one. Rerun it whenever the set changes in Settings.
+
+`npm run seed` is a different thing: it loads `sanjana_images/` from scratch and
+exists to bootstrap an empty deployment, not for everyday local work.
 
 ## Deploying
 

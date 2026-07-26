@@ -100,6 +100,14 @@ new looks *before* clearing the pending placeholders (otherwise the strip blinks
 with the generation apparently gone), and don't commit `seen` until that fetch
 succeeds (otherwise a dropped poll strands the look forever).
 
+**Local dev should mirror production, not `sanjana_images/`.** `npm run sync`
+copies production's reference photos and her description into local D1 and R2,
+so a local generation previews a real one. Without it local drifts to whatever
+was seeded once, and the reference set is the single biggest driver of likeness.
+The are.na channel already matches — `ARENA_CHANNEL` is a `var`, read by
+`wrangler dev` and `wrangler deploy` alike. The sync goes through the Cloudflare
+API rather than HTTPS, so it needs no Access service token.
+
 **Auth lives outside the app, and it breaks scripts.** Cloudflare Access guards
 the hostname; there is no login code in the Worker and there should not be.
 Anything hitting production from a terminal — `npm run seed`, any `curl` —

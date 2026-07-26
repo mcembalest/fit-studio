@@ -96,9 +96,13 @@ mid-generation finishes on the old version.
 ```sh
 npm install
 npm run db:local         # applies schema.sql to the simulated local D1
+npm run sync             # mirrors production's reference photos + description
 npm run dev              # vite on :8080, wrangler on :8787
-npm run seed             # loads the curated reference photos
 ```
+
+`npm run sync` reads production through wrangler rather than over HTTPS, so it
+works without an Access service token. Rerun it whenever the reference set
+changes in Settings — local otherwise drifts and stops predicting real output.
 
 Open http://localhost:8080. Wrangler simulates R2 and D1 under `.wrangler/`, so
 local work never touches production.
