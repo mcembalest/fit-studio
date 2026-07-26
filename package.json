@@ -14,7 +14,7 @@
     "db:remote": "wrangler d1 execute fit-studio --remote --file=schema.sql",
     "seed": "node scripts/seed-photos.mjs",
     "shot": "node scripts/screenshot.mjs",
-    "lint": "eslint ."
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "clsx": "^2.1.1",

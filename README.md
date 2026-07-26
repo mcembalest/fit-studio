@@ -98,14 +98,9 @@ Object or a Queue and poll.
 
 ## Deploying
 
-Live at **https://fitstudio.macembalest.workers.dev**. The R2 bucket, D1
-database and `OPENAI_API_KEY` secret already exist; redeploying is just:
-
-```sh
-npm run deploy
-```
-
-Production was seeded the same way as local — `FIT_STUDIO_URL=https://fitstudio.macembalest.workers.dev npm run seed`.
+Live at **https://fitstudio.macembalest.workers.dev**. Everything already
+exists, so a redeploy is just `npm run deploy` — full recipe, verification
+commands, migration ordering and rollback are in [DEPLOY.md](DEPLOY.md).
 
 The app has no auth. That URL is an open door to the OpenAI key — anyone who
 finds it can spend against it. Put Cloudflare Access in front of it before
