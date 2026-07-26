@@ -37,13 +37,18 @@ under `.wrangler/`, so nothing touches Cloudflare until you deploy.
 adds a block there, it appears in the app. Change `ARENA_CHANNEL` in
 `wrangler.jsonc` to point somewhere else.
 
-**Try-on** — `/api/tryon` sends every *active* reference photo plus the garment
-to `gpt-image-2`, along with the model description from Settings.
+**Try-on** — `/api/tryon` sends every reference photo plus the garment to
+`gpt-image-2`, along with the model description from Settings.
 
 **Remix** — `/api/remix` edits the previous look with `gpt-image-1.5` at
 `input_fidelity: high`. When the instruction targets *her* rather than the
 clothes ("her hair", "the face", "make her smile"), the reference photos are
 sent too, so the model corrects drift instead of compounding it.
+
+**Jobs** — neither of those runs inside the request that asks for it. Both write
+a row to `jobs`, wake a Durable Object, and return a job id immediately; the
+browser polls `/api/jobs`. So a generation survives a locked phone or a closed
+tab, browsing and staging stay live while one runs, and several can run at once.
 
 **Settings** — the reference set and a written description of her. Both are
 calibration, not per-look choices, so they live outside the studio flow.
@@ -88,10 +93,11 @@ not an error.
 by database id, so filling in a real id gives you a fresh empty local database —
 rerun `npm run db:local` and `npm run seed`.
 
-**Generations take 40–55 seconds.** That's the number to design the wait around;
-it isn't an occasional slow request. Well under Cloudflare's 100s limit, so the
-routes are synchronous — if that stops being true, move generation into a Durable
-Object or a Queue and poll.
+**Generations take 20–55 seconds, and `ctx.waitUntil()` is cancelled at 30.**
+Those two numbers are why generation lives in a Durable Object alarm (15 minute
+budget) rather than in the request or in `waitUntil`. Returning 202 and
+finishing in `waitUntil` looks right and quietly kills long generations halfway,
+after OpenAI has already been paid.
 
 **`input_fidelity` is a gpt-image-1.x parameter.** gpt-image-2 rejects it with
 `invalid_input_fidelity_model`.

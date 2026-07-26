@@ -13,6 +13,7 @@ Everything below assumes you are in the repo root on `main`.
 | Secret | `OPENAI_API_KEY`, set with `npx wrangler secret put OPENAI_API_KEY` |
 | Local secret | `.dev.vars` (gitignored; `.dev.vars.example` shows the shape) |
 | Closet source | are.na channel `to-sew-rqyybrm3cee`, `ARENA_CHANNEL` in `wrangler.jsonc` |
+| Durable Object | `GenerationJob`, bound as `JOBS` — runs generations in the background |
 
 All of it already exists. Do not re-create the bucket or database.
 
@@ -54,7 +55,11 @@ npx wrangler d1 execute fit-studio --remote --file=migrations/00X_thing.sql
 **Order matters when removing something.** Deploy code that no longer uses a
 column *before* dropping it, and leave ~30s between the two — the edge serves
 the previous version briefly after a deploy, and that old code will error on the
-missing column. For additive changes the order doesn't matter.
+missing column. For additive changes, migrate first so the new code never meets
+a table that isn't there yet.
+
+Note the `migrations` key in `wrangler.jsonc` is unrelated: that is wrangler's
+Durable Object class registry, and it is applied by `wrangler deploy` itself.
 
 ## Reference photos and settings
 
@@ -87,13 +92,21 @@ curl -s $U/api/closet  | python3 -c 'import json,sys;print(len(json.load(sys.std
 curl -s $U/api/looks   | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["looks"]),"looks")'
 ```
 
-For a real end-to-end check, stage a garment in the UI and press Generate, or:
+```sh
+curl -s "$U/api/jobs?cb=$RANDOM" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["jobs"]),"jobs")'
+```
+
+For a real end-to-end check, stage a garment in the UI and press Generate, or
+submit a job and watch it. The POST should come back in well under a second —
+if it blocks for 20s+, generation has been moved back into the request:
 
 ```sh
-G=$(curl -s $U/api/closet | python3 -c "
-import json,sys;g=json.load(sys.stdin)['garments'][9]
-print(json.dumps({'garmentUrl':g['url'],'garmentTitle':g['title'],'prompt':''}))")
-time curl -s -X POST $U/api/tryon -H 'content-type: application/json' -d "$G" | head -c 200
+P=$(curl -s $U/api/looks | python3 -c 'import json,sys;print(json.load(sys.stdin)["looks"][-1]["id"])')
+time curl -s -X POST $U/api/remix -H 'content-type: application/json' \
+  -d "{\"parentId\":\"$P\",\"prompt\":\"make the backdrop pale blue\",\"quality\":\"low\",\"clientToken\":\"check-$RANDOM\"}"
+
+# then poll until status is done or error (15-30s at quality low)
+curl -s "$U/api/jobs?cb=$RANDOM" | python3 -c 'import json,sys;j=json.load(sys.stdin)["jobs"][0];print(j["status"],j["look_id"],j["error"])'
 ```
 
 Live logs: `npx wrangler tail --format pretty`.
@@ -109,9 +122,15 @@ R2 and D1 are not rolled back by this — only the code.
 
 ## Expected failures that are not bugs
 
-- **`422` with a message about the safety filter.** OpenAI refuses sheer and
-  lingerie garments; her channel has several. The app surfaces this as a plain
-  explanation. Nothing to fix.
+- **A job ending in `error` with a message about the safety filter.** OpenAI
+  refuses sheer and lingerie garments; her channel has several. The app surfaces
+  this as a plain explanation. Nothing to fix.
 - **A stale response right after deploying.** The edge caches briefly. Retry
-  with a `?cb=$RANDOM` query before concluding something is broken.
-- **Generations taking 20–55s.** See the timings in `worker/openai.ts`.
+  with a `?cb=$RANDOM` query before concluding something is broken. A brand new
+  route will 404 for a few seconds this way.
+- **Generations taking 20–55s.** See the timings in `worker/openai.ts`. This no
+  longer blocks anything: the POST returns immediately and the work runs in the
+  `GenerationJob` Durable Object.
+- **A job stuck in `queued`/`running` flipping to `error` after five minutes.**
+  That is the stale sweep in `listJobs`, and it means the Durable Object was
+  evicted or its alarm never fired. Rare; the fix is to submit again.

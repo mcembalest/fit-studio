@@ -3,7 +3,6 @@ import type { Garment } from "@/lib/api";
 
 interface Props {
   garments: Garment[];
-  disabled: boolean;
   onPick: (garment: Garment) => void;
 }
 
@@ -13,8 +12,11 @@ interface Props {
  * Sized for browsing on a phone: tiles stay large enough to actually judge a
  * garment by, and the filter matters because the channel is long and block
  * titles are the only thing distinguishing them.
+ *
+ * Never disabled. Generation runs in the background, so browsing and staging
+ * the next piece while one is running is the normal case.
  */
-export function ClosetPanel({ garments, disabled, onPick }: Props) {
+export function ClosetPanel({ garments, onPick }: Props) {
   const [query, setQuery] = useState("");
 
   const shown = useMemo(() => {
@@ -52,9 +54,8 @@ export function ClosetPanel({ garments, disabled, onPick }: Props) {
           <button
             key={garment.id}
             type="button"
-            disabled={disabled}
             onClick={() => onPick(garment)}
-            className="group text-left disabled:opacity-50"
+            className="group text-left"
           >
             {/* Square tiles via percentage padding rather than aspect-ratio:
                 aspect-ratio resolves against a definite width only *after* the

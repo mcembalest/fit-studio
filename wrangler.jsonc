@@ -25,6 +25,19 @@
       "database_id": "de5e6bc7-8767-44cd-8838-f1aed0af08d3"
     }
   ],
+  // Generation runs here, not in the request that asks for it: a generation
+  // takes 20-55s and ctx.waitUntil() is cancelled at 30s, so background work
+  // needs an alarm's 15 minute budget. Note this `migrations` key is wrangler's
+  // Durable Object class registry — unrelated to the SQL in ./migrations.
+  "durable_objects": {
+    "bindings": [{ "name": "JOBS", "class_name": "GenerationJob" }]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GenerationJob"]
+    }
+  ],
   "vars": {
     // Her are.na channel — the closet. Swap the slug to point at another one.
     "ARENA_CHANNEL": "to-sew-rqyybrm3cee"

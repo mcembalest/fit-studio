@@ -1,28 +1,36 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { cn } from "@/lib/utils";
-import type { Garment, Look, Quality } from "@/lib/api";
+import type { Garment, Job, Look, Quality } from "@/lib/api";
 
 interface Props {
   look: Look | null;
   staged: Garment | null;
   lineage: Look[];
-  status: "idle" | "generating";
+  pending: Job[];
   error: string | null;
-  onGenerate: (notes: string) => void;
-  onRemix: (prompt: string, quality: Quality) => void;
+  onGenerate: (notes: string) => Promise<void> | void;
+  onRemix: (prompt: string, quality: Quality) => Promise<void> | void;
   onSelect: (look: Look) => void;
   onClearStaged: () => void;
+  onDismissError: () => void;
 }
 
 /**
- * Generations take 20-45s, so the wait is the design problem, not an edge case.
+ * Generations take 20-55s, so the wait is the design problem, not an edge case.
+ * Counts from the job's own start time rather than from mount, so the number
+ * survives a reload or a locked phone and still reads true.
  */
-function Elapsed() {
-  const [seconds, setSeconds] = useState(0);
+function Elapsed({ since }: { since: string }) {
+  const [now, setNow] = useState(() => Date.now());
+
   useEffect(() => {
-    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
+
+  // Clamped: a phone clock a second ahead of the edge would otherwise count
+  // backwards from -1.
+  const seconds = Math.max(0, Math.round((now - Date.parse(since)) / 1000));
   return <span className="tabular-nums">{seconds}s</span>;
 }
 
@@ -30,16 +38,19 @@ export function Stage({
   look,
   staged,
   lineage,
-  status,
+  pending,
   error,
   onGenerate,
   onRemix,
   onSelect,
   onClearStaged,
+  onDismissError,
 }: Props) {
   const [text, setText] = useState("");
   const [quality, setQuality] = useState<Quality>("low");
-  const generating = status === "generating";
+  // Covers only the moment the POST is in flight. Generation itself no longer
+  // blocks anything — but two taps inside that window would start two jobs.
+  const [submitting, setSubmitting] = useState(false);
 
   // Staging a garment is a separate mode from editing a finished look: picking
   // from the closet only loads the piece here, and nothing is generated until
@@ -48,14 +59,22 @@ export function Stage({
 
   useEffect(() => setText(""), [staged?.id, look?.id]);
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    if (generating) return;
-    if (staging) return onGenerate(text);
-    if (look && text.trim()) onRemix(text, quality);
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      if (staging) await onGenerate(text);
+      else if (look && text.trim()) await onRemix(text, quality);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const canSubmit = generating ? false : staging || (!!look && !!text.trim());
+  const canSubmit = submitting ? false : staging || (!!look && !!text.trim());
+  // Elapsed reads best off whatever has been waiting longest; `pending` arrives
+  // newest first.
+  const oldestPending = pending.at(-1);
 
   return (
     <section className="flex h-full min-h-0 flex-col">
@@ -99,27 +118,49 @@ export function Stage({
             className="max-h-full max-w-full rounded object-contain shadow-sm"
           />
         ) : (
-          !generating && (
-            <p className="max-w-xs text-center text-sm text-muted">
-              Pick a piece from the closet to stage it.
-            </p>
-          )
-        )}
-
-        {generating && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-canvas/80 text-sm text-muted backdrop-blur-sm">
-            <span>Generating…</span>
-            <Elapsed />
-          </div>
+          <p className="max-w-xs text-center text-sm text-muted">
+            {oldestPending
+              ? "Working on it — this takes about half a minute."
+              : "Pick a piece from the closet to stage it."}
+          </p>
         )}
       </div>
+
+      {/* Nothing here blocks the stage. A generation runs on the server, so she
+          can keep browsing, staging and editing while it does — the point is to
+          report progress, not to hold the app still. */}
+      {oldestPending && (
+        <div
+          role="status"
+          className="flex shrink-0 items-center gap-2 border-t border-line px-4 py-2 text-xs text-muted"
+        >
+          <span
+            aria-hidden
+            className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+          />
+          <span className="min-w-0 flex-1 truncate">
+            {pending.length > 1
+              ? `Generating ${pending.length} looks`
+              : `Generating — ${oldestPending.prompt}`}
+          </span>
+          <Elapsed since={oldestPending.created_at} />
+        </div>
+      )}
 
       {error && (
         <p
           role="alert"
-          className="shrink-0 border-t border-line px-4 py-2 text-xs text-accent"
+          className="flex shrink-0 items-start gap-2 border-t border-line px-4 py-2 text-xs text-accent"
         >
-          {error}
+          <span className="min-w-0 flex-1">{error}</span>
+          <button
+            type="button"
+            onClick={onDismissError}
+            aria-label="Dismiss"
+            className="shrink-0 px-1 text-muted hover:text-ink"
+          >
+            ×
+          </button>
         </p>
       )}
 
@@ -149,7 +190,7 @@ export function Stage({
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={generating || (!staging && !look)}
+            disabled={!staging && !look}
             placeholder={
               staging
                 ? "styling notes (optional)"

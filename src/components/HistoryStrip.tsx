@@ -1,8 +1,9 @@
 import { cn } from "@/lib/utils";
-import type { Look } from "@/lib/api";
+import type { Job, Look } from "@/lib/api";
 
 interface Props {
   looks: Look[];
+  pending: Job[];
   current: Look | null;
   onSelect: (look: Look) => void;
 }
@@ -11,15 +12,29 @@ interface Props {
  * Every look ever generated, newest first. Selecting an older one makes it the
  * base for the next remix, which is what makes history a tree: she can go back
  * two steps and branch a different direction instead of only undoing.
+ *
+ * Anything still generating holds a placeholder at the front, so a background
+ * job is visible as a thing in progress rather than as nothing at all.
  */
-export function HistoryStrip({ looks, current, onSelect }: Props) {
-  if (looks.length === 0) return null;
+export function HistoryStrip({ looks, pending, current, onSelect }: Props) {
+  if (looks.length === 0 && pending.length === 0) return null;
 
   return (
     <aside className="shrink-0 border-t border-line bg-surface">
       {/* Deliberately short on a phone: the stage, the controls and the tab bar
           all have to fit above the fold without crowding each other. */}
       <div className="flex gap-2 overflow-x-auto px-3 py-2">
+        {pending.map((job) => (
+          <div
+            key={job.id}
+            title={job.prompt}
+            aria-label={`Generating: ${job.prompt}`}
+            className="flex h-14 w-10 shrink-0 animate-pulse items-center justify-center rounded border border-dashed border-line bg-canvas text-[10px] text-muted sm:h-20 sm:w-14"
+          >
+            •••
+          </div>
+        ))}
+
         {looks.map((look) => (
           <button
             key={look.id}

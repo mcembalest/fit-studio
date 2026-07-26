@@ -31,3 +31,25 @@ CREATE TABLE IF NOT EXISTS settings (
   value      TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Background generation. See migrations/004_jobs.sql for why this exists: the
+-- row, not the HTTP request, is what a generation lives in, so the app stays
+-- usable while one runs and a closed tab doesn't lose it.
+CREATE TABLE IF NOT EXISTS jobs (
+  id            TEXT PRIMARY KEY,
+  client_token  TEXT UNIQUE,
+  kind          TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  request       TEXT NOT NULL,
+  prompt        TEXT NOT NULL,
+  parent_id     TEXT,
+  garment_title TEXT,
+  look_id       TEXT REFERENCES looks(id),
+  error         TEXT,
+  created_at    TEXT NOT NULL,
+  started_at    TEXT,
+  finished_at   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS jobs_created_idx ON jobs(created_at);
+CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status, created_at);

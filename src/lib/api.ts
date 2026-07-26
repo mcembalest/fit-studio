@@ -58,22 +58,53 @@ export function uploadPhoto(file: File) {
 export const deletePhoto = (id: string) =>
   call<{ ok: true }>(`/api/photos/${id}`, { method: "DELETE" });
 
-export const tryOn = (garment: Garment, prompt: string) =>
-  call<{ look: Look }>("/api/tryon", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      garmentUrl: garment.url,
-      garmentTitle: garment.title,
-      prompt,
-    }),
-  }).then((r) => r.look);
-
 export type Quality = "low" | "medium";
 
-export const remix = (parentId: string, prompt: string, quality: Quality) =>
-  call<{ look: Look }>("/api/remix", {
+export type JobStatus = "queued" | "running" | "done" | "error";
+
+/**
+ * A generation in progress. Generation is a background job rather than a long
+ * request: it outlives the tab that asked for it, so locking the phone or
+ * closing the app doesn't lose an image that has already been paid for.
+ */
+export interface Job {
+  id: string;
+  kind: "tryon" | "remix";
+  status: JobStatus;
+  prompt: string;
+  parent_id: string | null;
+  garment_title: string | null;
+  look_id: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export const isPending = (job: Job) =>
+  job.status === "queued" || job.status === "running";
+
+export const getJobs = () => call<{ jobs: Job[] }>("/api/jobs").then((r) => r.jobs);
+
+const post = (path: string, body: unknown) =>
+  call<{ job: Job }>(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ parentId, prompt, quality }),
-  }).then((r) => r.look);
+    body: JSON.stringify(body),
+  }).then((r) => r.job);
+
+// clientToken makes a submit idempotent: if the request is retried after a
+// dropped connection, the server hands back the job the first attempt created
+// instead of starting — and charging for — a second generation.
+export const tryOn = (garment: Garment, prompt: string, clientToken: string) =>
+  post("/api/tryon", {
+    garmentUrl: garment.url,
+    garmentTitle: garment.title,
+    prompt,
+    clientToken,
+  });
+
+export const remix = (
+  parentId: string,
+  prompt: string,
+  quality: Quality,
+  clientToken: string,
+) => post("/api/remix", { parentId, prompt, quality, clientToken });

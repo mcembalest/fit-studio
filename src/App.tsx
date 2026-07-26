@@ -1,28 +1,91 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClosetPanel } from "@/components/ClosetPanel";
 import { Stage } from "@/components/Stage";
 import { HistoryStrip } from "@/components/HistoryStrip";
 import { Settings } from "@/components/Settings";
 import { cn } from "@/lib/utils";
-import type { Garment, Look, Photo } from "@/lib/api";
+import type { Garment, Job, JobStatus, Look, Photo } from "@/lib/api";
 import * as api from "@/lib/api";
 
 type Tab = "look" | "closet";
+
+// Slow enough not to hammer the worker from a phone on cellular, quick enough
+// that a finished look doesn't sit there unnoticed. Generations run 20-55s.
+const POLL_MS = 2500;
 
 export default function App() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [garments, setGarments] = useState<Garment[]>([]);
   const [looks, setLooks] = useState<Look[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "generating">("idle");
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("look");
   const [settingsOpen, setSettingsOpen] = useState(false);
   // A garment chosen from the closet but not yet generated.
   const [staged, setStaged] = useState<Garment | null>(null);
 
+  // What each job looked like on the previous poll. A job is only *reacted* to
+  // when it changes status while we are watching — otherwise every reload would
+  // re-announce, and re-select, work that finished hours ago.
+  const seen = useRef(new Map<string, JobStatus>());
+  // The generation she is actually waiting on. Cleared the moment she picks
+  // something else, so a background result never yanks the stage out from under
+  // her while she is looking at another look.
+  const following = useRef<string | null>(null);
+
   const loadPhotos = useCallback(() => {
     api.getPhotos().then(setPhotos).catch(showError);
+  }, []);
+
+  function showError(err: unknown) {
+    setError(err instanceof Error ? err.message : String(err));
+  }
+
+  /**
+   * One pass of reconciliation: pull job state, notice what changed since the
+   * last pass, and fold any finished work into the looks list. This is the only
+   * thing that moves a generation from "running" to on-screen, so it has to be
+   * safe to call at any time — on load, on a timer, on returning to the tab.
+   */
+  const syncJobs = useCallback(async () => {
+    let next: Job[];
+    try {
+      next = await api.getJobs();
+    } catch {
+      // A dropped poll is not an app error — say nothing and try again.
+      return;
+    }
+
+    const before = seen.current;
+    const finished = next.filter(
+      (job) => !api.isPending(job) && before.has(job.id) && before.get(job.id) !== job.status,
+    );
+
+    // Fetch the finished work *before* dropping the pending markers. Clearing
+    // them first leaves a frame where the placeholder has gone and the look it
+    // promised hasn't arrived — the strip blinks and the generation looks lost.
+    const done = finished.filter((job) => job.status === "done");
+    if (done.length > 0) {
+      const fresh = await api.getLooks().catch(() => null);
+      // Bail without recording anything: `seen` is what makes a transition
+      // visible, so committing it here would mean this pass is the only chance
+      // to notice, and a dropped request would strand the look forever.
+      if (!fresh) return;
+      setLooks(fresh);
+
+      const followed = done.find((job) => job.id === following.current);
+      if (followed?.look_id && fresh.some((l) => l.id === followed.look_id)) {
+        setCurrentId(followed.look_id);
+        following.current = null;
+      }
+    }
+
+    seen.current = new Map(next.map((job) => [job.id, job.status]));
+    setJobs(next);
+
+    const failed = finished.find((job) => job.status === "error");
+    if (failed?.error) setError(failed.error);
   }, []);
 
   useEffect(() => {
@@ -32,14 +95,38 @@ export default function App() {
       .getLooks()
       .then((l) => {
         setLooks(l);
-        setCurrentId(l.at(-1)?.id ?? null);
+        setCurrentId((id) => id ?? l.at(-1)?.id ?? null);
       })
       .catch(showError);
-  }, [loadPhotos]);
+    syncJobs();
+  }, [loadPhotos, syncJobs]);
 
-  function showError(err: unknown) {
-    setError(err instanceof Error ? err.message : String(err));
-  }
+  const pending = useMemo(() => jobs.filter(api.isPending), [jobs]);
+
+  // Only poll while something is actually running, and never behind a hidden
+  // tab — a phone left on the closet screen shouldn't burn battery or requests.
+  useEffect(() => {
+    if (pending.length === 0) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") syncJobs();
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [pending.length, syncJobs]);
+
+  // Coming back to a phone that was locked mid-generation: catch up at once
+  // instead of waiting out a poll interval, or forever if nothing was pending
+  // when the tab went away.
+  useEffect(() => {
+    const catchUp = () => {
+      if (document.visibilityState === "visible") syncJobs();
+    };
+    document.addEventListener("visibilitychange", catchUp);
+    window.addEventListener("focus", catchUp);
+    return () => {
+      document.removeEventListener("visibilitychange", catchUp);
+      window.removeEventListener("focus", catchUp);
+    };
+  }, [syncJobs]);
 
   const current = useMemo(
     () => looks.find((l) => l.id === currentId) ?? null,
@@ -59,19 +146,27 @@ export default function App() {
     return chain;
   }, [looks, current]);
 
-  async function generate(run: () => Promise<Look>) {
-    setStatus("generating");
+  async function submit(run: (token: string) => Promise<Job>) {
     setError(null);
     try {
-      const look = await run();
-      setLooks((prev) => [...prev, look]);
-      setCurrentId(look.id);
+      const job = await run(crypto.randomUUID());
+      seen.current.set(job.id, job.status);
+      setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
+      following.current = job.id;
+      // The piece is submitted; the stage is hers again to browse from.
       setStaged(null);
+      // A resubmit can come back already finished (same clientToken, work
+      // already done) — there is no transition left to observe, so fold it in.
+      if (!api.isPending(job)) await syncJobs();
     } catch (err) {
       showError(err);
-    } finally {
-      setStatus("idle");
     }
+  }
+
+  function select(look: Look) {
+    setStaged(null);
+    setCurrentId(look.id);
+    following.current = null;
   }
 
   // Picking from the closet only stages the piece. Nothing is generated until
@@ -82,13 +177,13 @@ export default function App() {
     setTab("look");
   }
 
-  const onGenerate = (notes: string) =>
-    staged && generate(() => api.tryOn(staged, notes));
+  function onGenerate(notes: string) {
+    if (staged) return submit((token) => api.tryOn(staged, notes, token));
+  }
 
-  const onRemix = (prompt: string, quality: api.Quality) =>
-    current && generate(() => api.remix(current.id, prompt, quality));
-
-  const generating = status === "generating";
+  function onRemix(prompt: string, quality: api.Quality) {
+    if (current) return submit((token) => api.remix(current.id, prompt, quality, token));
+  }
 
   return (
     <div className="flex h-[100dvh] flex-col">
@@ -117,23 +212,19 @@ export default function App() {
             look={current}
             staged={staged}
             lineage={lineage}
-            status={status}
+            pending={pending}
             error={error}
             onGenerate={onGenerate}
             onRemix={onRemix}
-            onSelect={(look) => {
-              setStaged(null);
-              setCurrentId(look.id);
-            }}
+            onSelect={select}
             onClearStaged={() => setStaged(null)}
+            onDismissError={() => setError(null)}
           />
           <HistoryStrip
             looks={[...looks].reverse()}
+            pending={pending}
             current={staged ? null : current}
-            onSelect={(look) => {
-              setStaged(null);
-              setCurrentId(look.id);
-            }}
+            onSelect={select}
           />
         </div>
 
@@ -143,7 +234,7 @@ export default function App() {
             tab === "closet" ? "block" : "hidden",
           )}
         >
-          <ClosetPanel garments={garments} disabled={generating} onPick={onPick} />
+          <ClosetPanel garments={garments} onPick={onPick} />
         </div>
       </main>
 
@@ -161,8 +252,11 @@ export default function App() {
             )}
           >
             {t}
-            {t === "look" && staged && (
-              <span className="ml-1 text-accent" aria-label="piece staged">
+            {t === "look" && (staged || pending.length > 0) && (
+              <span
+                className="ml-1 text-accent"
+                aria-label={staged ? "piece staged" : "generating"}
+              >
                 •
               </span>
             )}
