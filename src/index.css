@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Every colour, radius and font in the app resolves through these. This is the
+   file to redesign from — components reference the tokens, never raw values. */
+@layer base {
+  :root {
+    --canvas: 40 20% 97%;
+    --surface: 0 0% 100%;
+    --line: 30 10% 88%;
+    --ink: 20 14% 12%;
+    --muted: 25 8% 46%;
+    --accent: 18 60% 45%;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+}

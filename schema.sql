@@ -1,0 +1,33 @@
+-- Reference photos of the model. `active` is what she toggles in the UI:
+-- only active photos are sent to the model on a try-on.
+CREATE TABLE IF NOT EXISTS model_photos (
+  id         TEXT PRIMARY KEY,
+  r2_key     TEXT NOT NULL,
+  filename   TEXT NOT NULL,
+  active     INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
+-- Generated looks. A look with parent_id IS NULL is a try-on (reference photos
+-- + a garment); a look with a parent_id is a remix of that parent. Since a
+-- parent can have many children, history is a tree and she can branch off any
+-- earlier version rather than only undoing the most recent change.
+CREATE TABLE IF NOT EXISTS looks (
+  id            TEXT PRIMARY KEY,
+  parent_id     TEXT REFERENCES looks(id),
+  r2_key        TEXT NOT NULL,
+  prompt        TEXT NOT NULL,
+  garment_url   TEXT,
+  garment_title TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS looks_parent_idx ON looks(parent_id);
+CREATE INDEX IF NOT EXISTS looks_created_idx ON looks(created_at);
+
+-- See migrations/002_settings.sql.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

@@ -1,0 +1,41 @@
+{
+  "name": "fit-studio",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "_comment": "dist/ only holds the built frontend, which vite serves itself in dev — but wrangler still wants the directory to exist.",
+    "dev": "mkdir -p dist && concurrently -n vite,worker -c cyan,magenta \"vite\" \"wrangler dev\"",
+    "dev:web": "vite",
+    "dev:worker": "wrangler dev",
+    "build": "vite build",
+    "deploy": "vite build && wrangler deploy",
+    "db:local": "wrangler d1 execute fit-studio --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute fit-studio --remote --file=schema.sql",
+    "seed": "node scripts/seed-photos.mjs",
+    "shot": "node scripts/screenshot.mjs",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "@types/node": "^26.1.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "playwright": "^1.62.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.11",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1",
+    "wrangler": "^4.107.0"
+  }
+}
