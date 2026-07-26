@@ -15,10 +15,32 @@ migrations/     numbered forward migrations for existing databases
 scripts/        seed-photos.mjs, screenshot.mjs
 ```
 
-Generation is a **background job**, not a request. `POST /api/tryon` and
-`/api/remix` write a row to `jobs`, wake a Durable Object, and return a job id
-in well under a second. The client polls `GET /api/jobs` and folds finished work
-into the looks list. Nothing in the UI blocks while a generation runs.
+## How it works
+
+**Closet** — `/api/closet` reads her are.na channel. Public JSON, no auth: she
+adds a block there and it appears in the app. `ARENA_CHANNEL` in
+`wrangler.jsonc` points at the channel.
+
+**Try-on** — `/api/tryon` sends every reference photo plus the garment to
+`gpt-image-2`, along with the written description from Settings.
+
+**Remix** — `/api/remix` edits an existing look with `gpt-image-1.5` at
+`input_fidelity: high`. When the instruction targets *her* rather than the
+clothes, the reference photos go too (see identity drift below).
+
+**Jobs** — neither of those runs inside the request that asks for it. Both write
+a row to `jobs`, wake the `GenerationJob` Durable Object, and return a job id in
+well under a second; the browser polls `/api/jobs`. So a generation survives a
+locked phone or a closed tab, browsing and staging stay live while one runs, and
+several can run at once.
+
+**Settings** — the reference set and the description of her. Both are
+calibration rather than per-look choices, so they live outside the studio flow.
+The description is stored in D1, so editing it needs no redeploy.
+
+**History is a tree.** Each look records its `parent_id`. Selecting an older
+look and remixing branches from it instead of overwriting, so she can go back
+two steps and try a different direction.
 
 ## Things that are easy to get wrong
 
@@ -79,7 +101,16 @@ with the generation apparently gone), and don't commit `seen` until that fetch
 succeeds (otherwise a dropped poll strands the look forever).
 
 **Check mobile at 360px, not just 390px.** Overflow and cramping show up there
-first. `npm run shot` catches console errors; layout problems need a real look.
+first. `npm run shot` catches console errors; layout problems need a real look
+(it needs `npx playwright install chromium` once).
+
+**OpenAI refuses some garments.** Sheer and lingerie pieces in her channel come
+back as `safety_violations=[sexual]`. That is not a bug — it is surfaced as a
+plain explanation, and no amount of prompt rewording gets around it.
+
+**Changing `database_id` orphans local D1 state.** Wrangler keys local storage
+by database id, so a new id silently gives you a fresh empty local database.
+Rerun `npm run db:local` and `npm run seed`.
 
 ## Working style for this repo
 
