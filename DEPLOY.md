@@ -24,35 +24,37 @@ hostname, so an unauthorised request is rejected at the edge and the Worker
 never runs — which is the point: the OpenAI key cannot be spent by someone who
 is not on the list.
 
+The login method is **one-time PIN**: Cloudflare emails a six-digit code to an
+address on the allow list. No identity provider to own, and it works with the
+email address each person already has.
+
 **Turning it on** (one time, dashboard only, free up to 50 users):
 
-1. **Workers & Pages** → `fitstudio` → **Settings** → **Domains & Routes**.
-2. Next to the `workers.dev` entry, select **Enable Cloudflare Access**. This
+1. **Zero Trust** → **Integrations** → **Identity providers**. If **One-time
+   PIN** is not listed, **Add new identity provider** → **One-time PIN**. New
+   Zero Trust organisations default to the Cloudflare provider now and no longer
+   get OTP automatically, so check this first rather than after.
+2. **Workers & Pages** → `fitstudio` → **Settings** → **Domains & Routes**.
+3. Next to the `workers.dev` entry, select **Enable Cloudflare Access**. This
    creates an Access application and a policy named `fitstudio - Production`.
-3. **Manage Cloudflare Access** → edit that policy → **Include** → **Emails**,
-   and add the two addresses that should be allowed.
-4. In the application's settings, set **Session duration** to the longest
+4. **Manage Cloudflare Access** → edit that policy → **Include** → **Emails**,
+   and add the two addresses that should be allowed. Only these get a PIN;
+   a code sent to anything else is refused.
+5. In the application's settings, set **Session duration** to the longest
    offered (1 month). This is how often she has to sign in again on her phone —
    the default is far shorter and is the main thing that makes Access annoying.
 
 Do the same for **Preview URLs** if they are enabled; they are a second door to
 the same Worker.
 
-**Login methods** live under **Zero Trust** → **Integrations** → **Identity
-providers**:
+If the PIN email never arrives, it is from `noreply@notify.cloudflare.com` —
+check spam, and allowlist it if a mail scanner is in the way.
 
-- **One-time PIN** needs no setup at all — Cloudflare emails a six-digit code to
-  any address on the allow list. Start here.
-- **Google** is a nicer phone experience but is *not* one-click: it needs a
-  Google Cloud project with an OAuth consent screen and a Web application OAuth
-  client, whose authorised redirect URI is
-  `https://<team-name>.cloudflareaccess.com/cdn-cgi/access/callback` (and
-  JavaScript origin `https://<team-name>.cloudflareaccess.com`). Paste the
-  resulting client ID and secret into Cloudflare. The team name is under **Zero
-  Trust** → **Settings** → **Team name and domain**.
-- **Cloudflare** as the provider works if everyone has a Cloudflare account.
-
-Both can be enabled at once, and each person picks.
+Other login methods can be added later under the same **Identity providers**
+screen and enabled alongside OTP, so each person picks. Google is the nicest on
+a phone but is *not* one-click: it needs a Google Cloud project with an OAuth
+consent screen and a Web application client whose authorised redirect URI is
+`https://<team-name>.cloudflareaccess.com/cdn-cgi/access/callback`.
 
 ### Scripts and curl need a service token
 
